@@ -17,13 +17,14 @@ func main() {
 
 func run() error {
 	rom := flag.String("rom", "", "the rom to load/play")
+	debug := flag.Bool("debug", false, "run in debug mode (dumps state on steps)")
 	flag.Parse()
 
 	if *rom == "" {
 		return errors.New("no rom specified")
 	}
 
-	emu := chip8.NewEmulator()
+	emu := chip8.NewEmulator(*debug)
 
 	return emu.Run()
 }
