@@ -49,7 +49,7 @@ func (c *Controller) Op(l Loader, d Drawer) {
 	x := hi & 0x0F
 	y := (kk & 0xF0) >> 4
 
-	log.Printf("instruction: %x - hi: %x, lo (kk): %x, nnn: %x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y)
+	log.Printf("instruction: %04x - hi: %02x, lo (kk): %02x, nnn: %03x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y)
 
 	switch hi >> 4 {
 	case 0x0:
@@ -59,7 +59,6 @@ func (c *Controller) Op(l Loader, d Drawer) {
 		case 0xE:
 			c.pc = c.stack.pop()
 			c.sp -= 1
-			stepped = true
 		default:
 			panic(fmt.Sprintf("unknown instruction: %x - hi: %x, lo (kk): %x, nnn: %x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
 		}
