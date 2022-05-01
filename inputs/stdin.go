@@ -2,8 +2,12 @@ package inputs
 
 import (
 	"bufio"
+	"log"
 	"os"
+	"time"
 )
+
+var buf = bufio.NewReader(os.Stdin)
 
 type Stdin struct {
 	listener chan uint8
@@ -12,36 +16,27 @@ type Stdin struct {
 func (s *Stdin) Pressed(k uint8) bool {
 	select {
 	case v := <-s.listener:
-		return v == k
-	default:
-		// nop
+		log.Println(v, k, mapping[k])
+		return v == mapping[k]
+	case <-time.After(1000 * time.Millisecond):
 	}
 	return false
 }
 
 func (s *Stdin) listen() {
-	buf := bufio.NewReader(os.Stdin)
-
 	for {
-		r, _, err := buf.ReadRune()
-		if err != nil {
-			panic("invalid input")
-		}
-		if n := uint8(r); r&0xFFF0 == 0 {
-			select {
-			case s.listener <- n:
-			default:
-				// don't block if pressed isn't listening, just throw it away
-			}
+		b, _ := buf.ReadByte()
+		select {
+		case s.listener <- b:
+		case <-time.After(1000 * time.Millisecond):
 		}
 	}
 
 }
 
 func NewStdin() *Stdin {
-	listener := make(chan uint8)
 	s := Stdin{
-		listener: listener,
+		listener: make(chan uint8, 1),
 	}
 	go s.listen()
 	return &s

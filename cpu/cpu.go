@@ -99,6 +99,32 @@ func (c *Controller) Op(r ReadWriter, d Drawer, i Inputer) {
 		c.WriteVx(x, kk)
 	case 0x7:
 		c.WriteVx(x, c.Vx(x)+kk)
+	case 0x8:
+		switch kk & 0xF {
+		case 0x0:
+			c.WriteVx(x, c.Vx(y))
+		case 0x2:
+			c.WriteVx(x, c.Vx(x)&c.Vx(y))
+		case 0x4:
+			n := int(c.Vx(x)) + int(c.Vx(y))
+			var carry uint8
+			if n&0xF != 0 {
+				carry = 1
+			}
+			c.WriteVx(0xF, carry)
+			c.WriteVx(x, uint8(n))
+		case 0x5:
+			vx := c.Vx(x)
+			vy := c.Vx(y)
+			var notBorrow uint8
+			if vx > vy {
+				notBorrow = 1
+			}
+			c.WriteVx(x, vx-vy)
+			c.WriteVx(0xF, notBorrow)
+		default:
+			panic(fmt.Sprintf("unknown instruction: %04x - hi: %02x, lo (kk): %02x, nnn: %03x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
+		}
 	case 0x9:
 		if c.Vx(x) != c.Vx(y) {
 			c.pc += 2
@@ -113,16 +139,20 @@ func (c *Controller) Op(r ReadWriter, d Drawer, i Inputer) {
 			data = append(data, r.Read(c.i+i))
 		}
 		collision := d.Draw(c.Vx(x), c.Vx(y), data)
+		var flag uint8
 		if collision {
-			c.WriteVx(0xF, 0x1)
-		} else {
-			c.WriteVx(0xF, 0x0)
+			flag = 1
 		}
+		c.WriteVx(0xF, flag)
 	case 0xe:
 		switch kk {
 		case 0xa1:
+			log.Printf("waiting for: %d", c.Vx(x))
 			if !i.Pressed(c.Vx(x)) {
 				c.pc += 2
+			} else {
+				log.Printf("was pressed: %t", i.Pressed(c.Vx(x)))
+				panic("it was caught!")
 			}
 		default:
 			panic(fmt.Sprintf("unknown instruction: %04x - hi: %02x, lo (kk): %02x, nnn: %03x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
@@ -138,6 +168,10 @@ func (c *Controller) Op(r ReadWriter, d Drawer, i Inputer) {
 			c.dmu.Lock()
 			c.delay = c.Vx(x)
 			c.dmu.Unlock()
+		case 0x18:
+			c.smu.Lock()
+			c.sound = c.Vx(x)
+			c.smu.Unlock()
 		case 0x29:
 			c.i = r.Sprite(c.Vx(x))
 		case 0x33:
@@ -152,7 +186,6 @@ func (c *Controller) Op(r ReadWriter, d Drawer, i Inputer) {
 		case 0x65:
 			var vx uint8
 			for vx = 0; vx <= x; vx++ {
-				log.Printf("writing - vx: %d, pos: %04x, data: %b", vx, c.i+uint16(vx), r.Read(c.i+uint16(vx)))
 				c.WriteVx(vx, r.Read(c.i+uint16(vx)))
 			}
 		default:
