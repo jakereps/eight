@@ -11,6 +11,7 @@ import (
 	"github.com/jakereps/eight/chip8"
 	"github.com/jakereps/eight/cpu"
 	"github.com/jakereps/eight/display"
+	"github.com/jakereps/eight/inputs"
 	"github.com/jakereps/eight/ram"
 )
 
@@ -32,6 +33,7 @@ func run() error {
 
 	opts := []chip8.EmulatorOption{
 		chip8.WithDisplay(display.NewText()),
+		chip8.WithInputer(inputs.NewStdin()),
 		chip8.WithCPU(cpu.NewController()),
 		chip8.WithRAM(ram.NewStorage()),
 	}

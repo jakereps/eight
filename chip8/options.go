@@ -9,9 +9,16 @@ import (
 
 type EmulatorOption func(*Emulator) error
 
-func WithDisplay(disp Display) EmulatorOption {
+func WithDisplay(disp Displayer) EmulatorOption {
 	return func(e *Emulator) error {
 		e.disp = disp
+		return nil
+	}
+}
+
+func WithInputer(inp Inputer) EmulatorOption {
+	return func(e *Emulator) error {
+		e.keys = inp
 		return nil
 	}
 }

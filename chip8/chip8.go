@@ -10,7 +10,7 @@ import (
 	"github.com/jakereps/eight/ram"
 )
 
-type Display interface {
+type Displayer interface {
 	Draw(x, y uint8, data []byte) bool
 	Clear()
 
@@ -18,10 +18,15 @@ type Display interface {
 	State() string
 }
 
+type Inputer interface {
+	Pressed(uint8) bool
+}
+
 type Emulator struct {
 	cpu   *cpu.Controller
 	ram   *ram.Storage
-	disp  Display
+	disp  Displayer
+	keys  Inputer
 	debug bool
 	dstr  strings.Builder
 }
@@ -55,7 +60,7 @@ func (e *Emulator) Run(ctx context.Context) error {
 }
 
 func (e *Emulator) opt() {
-	e.cpu.Op(e.ram, e.disp)
+	e.cpu.Op(e.ram, e.disp, e.keys)
 }
 
 func (e *Emulator) step() error {

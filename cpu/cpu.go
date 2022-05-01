@@ -41,7 +41,11 @@ type Drawer interface {
 	Clear()
 }
 
-func (c *Controller) Op(r ReadWriter, d Drawer) {
+type Inputer interface {
+	Pressed(uint8) bool
+}
+
+func (c *Controller) Op(r ReadWriter, d Drawer, i Inputer) {
 	var stepped bool
 	defer func() {
 		if !stepped {
@@ -117,8 +121,9 @@ func (c *Controller) Op(r ReadWriter, d Drawer) {
 	case 0xe:
 		switch kk {
 		case 0xa1:
-			// check if key pressed
-			stepped = true
+			if !i.Pressed(c.Vx(x)) {
+				c.pc += 2
+			}
 		default:
 			panic(fmt.Sprintf("unknown instruction: %04x - hi: %02x, lo (kk): %02x, nnn: %03x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
 		}
