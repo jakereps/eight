@@ -3,6 +3,7 @@ package cpu
 import (
 	"fmt"
 	"log"
+	"strconv"
 )
 
 type Controller struct {
@@ -23,8 +24,10 @@ func (c *Controller) Vx(x uint8) uint8 {
 	return c.registers[x]
 }
 
-type Loader interface {
-	Load(uint16) uint8
+type ReadWriter interface {
+	Read(uint16) uint8
+	Write(uint16, uint8)
+	Sprite(uint8) uint16
 }
 
 type Drawer interface {
@@ -32,7 +35,7 @@ type Drawer interface {
 	Clear()
 }
 
-func (c *Controller) Op(l Loader, d Drawer) {
+func (c *Controller) Op(r ReadWriter, d Drawer) {
 	var stepped bool
 	defer func() {
 		if !stepped {
@@ -40,8 +43,8 @@ func (c *Controller) Op(l Loader, d Drawer) {
 		}
 	}()
 
-	hi := l.Load(c.pc)
-	kk := l.Load(c.pc + 1)
+	hi := r.Read(c.pc)
+	kk := r.Read(c.pc + 1)
 
 	inst := (uint16(hi) << 8) | uint16(kk)
 	nnn := inst & 0x0FFF
@@ -95,13 +98,35 @@ func (c *Controller) Op(l Loader, d Drawer) {
 	case 0xd:
 		data := make([]byte, 0, n)
 		for i := uint16(0); i < n; i++ {
-			data = append(data, l.Load(c.i+i))
+			data = append(data, r.Read(c.i+i))
 		}
 		collision := d.Draw(c.Vx(x), c.Vx(y), data)
 		if collision {
 			c.WriteVx(0xF, 0x1)
 		} else {
 			c.WriteVx(0xF, 0x0)
+		}
+	case 0xf:
+		switch kk {
+		case 0x29:
+			c.i = r.Sprite(c.Vx(x))
+		case 0x33:
+			data := strconv.Itoa(int(c.Vx(x)))
+			for i, digit := range data {
+				v, err := strconv.Atoi(string(digit))
+				if err != nil {
+					panic(fmt.Sprintf("failed converting to int: %s", err))
+				}
+				r.Write(c.i+uint16(len(data)-i), uint8(v))
+			}
+		case 0x65:
+			var vx uint8
+			for vx = 0; vx <= x; vx++ {
+				log.Printf("writing - vx: %d, pos: %04x, data: %b", vx, c.i+uint16(vx), r.Read(c.i+uint16(vx)))
+				c.WriteVx(vx, r.Read(c.i+uint16(vx)))
+			}
+		default:
+			panic(fmt.Sprintf("unknown instruction: %x - hi: %x, lo (kk): %x, nnn: %x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
 		}
 	default:
 		panic(fmt.Sprintf("unknown instruction: %x - hi: %x, lo (kk): %x, nnn: %x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
