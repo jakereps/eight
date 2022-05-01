@@ -3,17 +3,23 @@ package cpu
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"strconv"
+	"sync"
+	"time"
 )
 
 type Controller struct {
 	registers []uint8
 	i         uint16
-	delay     uint8
-	sound     uint8
 	pc        uint16
 	sp        uint8
 	stack     *stack
+
+	delay uint8
+	dmu   *sync.RWMutex
+	sound uint8
+	smu   *sync.RWMutex
 }
 
 func (c *Controller) WriteVx(x uint8, b uint8) {
@@ -63,7 +69,7 @@ func (c *Controller) Op(r ReadWriter, d Drawer) {
 			c.pc = c.stack.pop()
 			c.sp -= 1
 		default:
-			panic(fmt.Sprintf("unknown instruction: %x - hi: %x, lo (kk): %x, nnn: %x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
+			panic(fmt.Sprintf("unknown instruction: %04x - hi: %02x, lo (kk): %02x, nnn: %03x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
 		}
 	case 0x1:
 		c.pc = nnn
@@ -95,6 +101,8 @@ func (c *Controller) Op(r ReadWriter, d Drawer) {
 		}
 	case 0xa:
 		c.i = nnn
+	case 0xc:
+		c.WriteVx(x, kk&uint8(rand.Intn(256)))
 	case 0xd:
 		data := make([]byte, 0, n)
 		for i := uint16(0); i < n; i++ {
@@ -106,8 +114,25 @@ func (c *Controller) Op(r ReadWriter, d Drawer) {
 		} else {
 			c.WriteVx(0xF, 0x0)
 		}
+	case 0xe:
+		switch kk {
+		case 0xa1:
+			// check if key pressed
+			stepped = true
+		default:
+			panic(fmt.Sprintf("unknown instruction: %04x - hi: %02x, lo (kk): %02x, nnn: %03x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
+		}
 	case 0xf:
 		switch kk {
+		case 0x07:
+			c.dmu.RLock()
+			d := c.delay
+			c.dmu.RUnlock()
+			c.WriteVx(x, d)
+		case 0x15:
+			c.dmu.Lock()
+			c.delay = c.Vx(x)
+			c.dmu.Unlock()
 		case 0x29:
 			c.i = r.Sprite(c.Vx(x))
 		case 0x33:
@@ -126,10 +151,10 @@ func (c *Controller) Op(r ReadWriter, d Drawer) {
 				c.WriteVx(vx, r.Read(c.i+uint16(vx)))
 			}
 		default:
-			panic(fmt.Sprintf("unknown instruction: %x - hi: %x, lo (kk): %x, nnn: %x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
+			panic(fmt.Sprintf("unknown instruction: %04x - hi: %02x, lo (kk): %02x, nnn: %03x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
 		}
 	default:
-		panic(fmt.Sprintf("unknown instruction: %x - hi: %x, lo (kk): %x, nnn: %x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
+		panic(fmt.Sprintf("unknown instruction: %04x - hi: %02x, lo (kk): %02x, nnn: %03x, n: %x, x: %d, y: %d", inst, hi, kk, nnn, n, x, y))
 	}
 }
 
@@ -137,11 +162,60 @@ func (c *Controller) State() string {
 	return fmt.Sprintf("%+v", c)
 }
 
-func NewController() *Controller {
+func multiplex(n int, c <-chan time.Time) []<-chan time.Time {
+	chans := make([]chan time.Time, 0, n)
+	out := make([]<-chan time.Time, 0, n)
+	for i := 0; i < n; i++ {
+		channel := make(chan time.Time)
+		chans = append(chans, channel)
+		out = append(out, channel)
+	}
 
-	return &Controller{
+	go func() {
+		for t := range c {
+			for _, cn := range chans {
+				select {
+				case cn <- t:
+				default:
+				}
+			}
+		}
+	}()
+	return out
+}
+
+func (c *Controller) startDelay(ch <-chan time.Time) {
+	for range ch {
+		c.dmu.Lock()
+		if c.delay > 0 {
+			c.delay -= 1
+		}
+		c.dmu.Unlock()
+	}
+}
+
+func (c *Controller) startSound(ch <-chan time.Time) {
+	for range ch {
+		c.smu.Lock()
+		if c.sound > 0 {
+			c.sound -= 1
+		}
+		c.smu.Unlock()
+	}
+}
+
+func NewController() *Controller {
+	c := Controller{
 		pc:        0x200,
 		registers: make([]uint8, 16),
 		stack:     &stack{},
+
+		dmu: &sync.RWMutex{},
+		smu: &sync.RWMutex{},
 	}
+	t := time.NewTicker(time.Second / 60)
+	cs := multiplex(2, t.C)
+	go c.startDelay(cs[0])
+	go c.startSound(cs[1])
+	return &c
 }
